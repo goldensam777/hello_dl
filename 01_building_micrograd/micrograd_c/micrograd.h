@@ -6,6 +6,12 @@
 #define VALUE_CHILDREN_COUNT 2
 
 typedef struct Value Value;
+typedef Value value;
+
+typedef struct {
+    Value **values;
+    size_t size;
+} ValueArray;
 
 struct Value {
     double data;
@@ -20,25 +26,21 @@ typedef struct Neuron {
     Value **weights;
     size_t n_in;
     Value *bias;
+    ValueArray params;
 } Neuron;
 
 typedef struct Layer {
     Neuron *neurons;
     size_t n_in;
     size_t n_out;
+    ValueArray params;
 } Layer;
 
 typedef struct MLP {
     Layer *layers;
     size_t n_layers;
+    ValueArray params;
 } MLP;
-
-typedef struct {
-    Value **values;
-    size_t size;
-} ValueArray;
-
-typedef Value value;
 
 Value *init_value(double data_, double grad_, char op_, const char *label_,
                  Value **children_);

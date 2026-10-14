@@ -175,11 +175,32 @@ static double random_weight(void)
 	return 2.0 * (double)rand() / (double)RAND_MAX - 1.0;
 }
 
+static int append_parameter(ValueArray *params, Value *parameter)
+{
+	Value **new_values = realloc(params->values,
+	                             (params->size + 1) * sizeof(*new_values));
+	if (new_values == NULL) {
+		return 0;
+	}
+
+	params->values = new_values;
+	params->values[params->size++] = parameter;
+	return 1;
+}
+
+static void clear_parameter_array(ValueArray *params)
+{
+	free(params->values);
+	params->values = NULL;
+	params->size = 0;
+}
+
 int neuron_init(Neuron *neuron, size_t n_in)
 {
 	if (neuron == NULL || n_in == 0) {
 		return 0;
 	}
+	neuron->params = (ValueArray){NULL, 0};
 
 	neuron->weights = calloc(n_in, sizeof(*neuron->weights));
 	if (neuron->weights == NULL) {
@@ -207,6 +228,17 @@ int neuron_init(Neuron *neuron, size_t n_in)
 			neuron->bias = NULL;
 			return 0;
 		}
+	}
+
+	for (size_t i = 0; i < n_in; i++) {
+		if (!append_parameter(&neuron->params, neuron->weights[i])) {
+			clear_parameter_array(&neuron->params);
+			return 0;
+		}
+	}
+	if (!append_parameter(&neuron->params, neuron->bias)) {
+		clear_parameter_array(&neuron->params);
+		return 0;
 	}
 
 	return 1;
@@ -247,6 +279,7 @@ void neuron_free(Neuron *neuron)
 
 	free(neuron->weights);
 	neuron->weights = NULL;
+	clear_parameter_array(&neuron->params);
 	neuron->bias = NULL;
 	neuron->n_in = 0;
 }
@@ -264,6 +297,7 @@ int layer_init(Layer *layer, size_t n_in, size_t n_out)
 
 	layer->n_in = n_in;
 	layer->n_out = n_out;
+	layer->params = (ValueArray){NULL, 0};
 	for (size_t i = 0; i < n_out; i++) {
 		if (!neuron_init(&layer->neurons[i], n_in)) {
 			for (size_t j = 0; j < i; j++) {
@@ -272,6 +306,13 @@ int layer_init(Layer *layer, size_t n_in, size_t n_out)
 			free(layer->neurons);
 			layer->neurons = NULL;
 			return 0;
+		}
+		for (size_t j = 0; j < layer->neurons[i].params.size; j++) {
+			if (!append_parameter(&layer->params,
+			                      layer->neurons[i].params.values[j])) {
+				layer_free(layer);
+				return 0;
+			}
 		}
 	}
 
@@ -327,6 +368,7 @@ void layer_free(Layer *layer)
 	}
 	free(layer->neurons);
 	layer->neurons = NULL;
+	clear_parameter_array(&layer->params);
 	layer->n_in = 0;
 	layer->n_out = 0;
 }
@@ -342,6 +384,7 @@ int mlp_init(MLP *mlp, const size_t *sizes, size_t n_layers)
 		return 0;
 	}
 	mlp->n_layers = n_layers;
+	mlp->params = (ValueArray){NULL, 0};
 
 	for (size_t i = 0; i < n_layers; i++) {
 		if (!layer_init(&mlp->layers[i], sizes[i], sizes[i + 1])) {
@@ -352,6 +395,13 @@ int mlp_init(MLP *mlp, const size_t *sizes, size_t n_layers)
 			mlp->layers = NULL;
 			mlp->n_layers = 0;
 			return 0;
+		}
+		for (size_t j = 0; j < mlp->layers[i].params.size; j++) {
+			if (!append_parameter(&mlp->params,
+			                      mlp->layers[i].params.values[j])) {
+				mlp_free(mlp);
+				return 0;
+			}
 		}
 	}
 
@@ -393,5 +443,6 @@ void mlp_free(MLP *mlp)
 	}
 	free(mlp->layers);
 	mlp->layers = NULL;
+	clear_parameter_array(&mlp->params);
 	mlp->n_layers = 0;
 }
